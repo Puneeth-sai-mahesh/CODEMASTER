@@ -1,0 +1,60 @@
+name: Build Android APK
+
+on:
+  push:
+  workflow_dispatch:      # lets you press "Run workflow" by hand
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run the game tests (a failure here will not stop the APK build)
+        continue-on-error: true
+        run: |
+          pip install pytest
+          python -m pytest -q tests/test_game.py
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git zip unzip autoconf automake libtool pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev \
+            libssl-dev build-essential ccache
+
+      - name: Cache the Android toolchain (makes later builds much faster)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            .buildozer
+          key: buildozer-${{ hashFiles('buildozer.spec') }}
+          restore-keys: buildozer-
+
+      - name: Install Buildozer
+        run: pip install --upgrade pip && pip install buildozer==1.5.0 Cython==0.29.36 virtualenv setuptools
+
+      - name: Build the APK
+        run: buildozer -v android debug
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodeQuest-apk
+          path: bin/*.apk
+          if-no-files-found: error
